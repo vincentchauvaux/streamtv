@@ -1,0 +1,189 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum ScanStatus {
+  OK
+  ERROR
+  PENDING
+}
+
+enum ChannelStatus {
+  ONLINE
+  OFFLINE
+  UNKNOWN
+}
+
+enum LogoSource {
+  PLAYLIST
+  UPLOAD
+  FALLBACK
+  NONE
+}
+
+enum StreamType {
+  HLS
+  DASH
+  MP4
+  TS
+  RADIO
+  YOUTUBE_LIVE
+  UNKNOWN
+}
+
+enum ScanLogType {
+  IMPORT
+  RESCAN
+}
+
+enum FavoriteCategory {
+  NEWS
+  SPORTS
+  MOVIES
+  KIDS
+}
+
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  playlists    Playlist[]
+  favorites    Favorite[]
+  watchHistory WatchHistory[]
+}
+
+model Playlist {
+  id           String      @id @default(cuid())
+  name         String
+  url          String?
+  epgUrl       String?
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channels     Channel[]
+  scanLogs     ScanLog[]
+  lastScanAt   DateTime?
+  channelCount Int         @default(0)
+  scanStatus   ScanStatus  @default(PENDING)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model ScanLog {
+  id               String       @id @default(cuid())
+  playlistId       String
+  playlist         Playlist     @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  type             ScanLogType
+  channelCount     Int          @default(0)
+  radioCount       Int          @default(0)
+  groupCount       Int          @default(0)
+  logoCount        Int          @default(0)
+  programCount     Int          @default(0)
+  missingLogoCount Int          @default(0)
+  durationMs       Int?
+  errorCount       Int          @default(0)
+  offlineCount     Int          @default(0)
+  errors           String?
+  createdAt        DateTime     @default(now())
+
+  @@index([playlistId, createdAt])
+}
+
+model Channel {
+  id             String         @id @default(cuid())
+  name           String
+  normalizedName String         @default("")
+  logo           String?
+  logoSource     LogoSource     @default(NONE)
+  logoWidth      Int?
+  logoHeight     Int?
+  logoEtag       String?
+  logoLastUpdate DateTime?
+  group          String?
+  tvgId        String?
+  tvgName      String?
+  language     String?
+  country      String?
+  catchup      String?
+  radio        Boolean        @default(false)
+  resolution   String?
+  status       ChannelStatus  @default(UNKNOWN)
+  playlistId   String
+  playlist     Playlist       @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  streams      Stream[]
+  favorites    Favorite[]
+  watchHistory WatchHistory[]
+  programs     Program[]
+  createdAt    DateTime       @default(now())
+
+  @@index([playlistId])
+  @@index([name])
+  @@index([normalizedName])
+  @@index([tvgId])
+  @@index([group])
+  @@index([country])
+  @@index([language])
+}
+
+model Stream {
+  id         String     @id @default(cuid())
+  url        String
+  quality    String?
+  codec      String?
+  streamType StreamType @default(UNKNOWN)
+  online     Boolean    @default(true)
+  channelId  String
+  channel    Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdAt  DateTime   @default(now())
+
+  @@index([channelId])
+}
+
+model Favorite {
+  id        String            @id @default(cuid())
+  userId    String
+  channelId String
+  category  FavoriteCategory?
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdAt DateTime          @default(now())
+
+  @@unique([userId, channelId])
+}
+
+model WatchHistory {
+  id                 String   @id @default(cuid())
+  userId             String
+  channelId          String
+  positionSec        Float    @default(0)
+  durationSec        Float?
+  watchedSec         Float    @default(0)
+  sessionDurationSec Float?
+  viewCount          Int      @default(1)
+  lastWatched        DateTime @default(now())
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel            Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId])
+  @@index([userId, lastWatched])
+}
+
+model Program {
+  id          String   @id @default(cuid())
+  channelId   String
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  start       DateTime
+  end         DateTime
+  category    String?
+
+  @@index([channelId, start])
+}
