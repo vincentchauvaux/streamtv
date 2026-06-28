@@ -135,6 +135,30 @@ Variables d'environnement (voir `.env.example`) :
 - `JWT_SECRET` — secret JWT
 - `CRON_SECRET` — protège `/api/cron/scan`
 
+## Déploiement (VPS OVH)
+
+**Production en ligne** : http://51.178.44.114 · http://vps-e09ed6db.vps.ovh.net
+
+| Élément | Valeur |
+|---|---|
+| VPS | OVH VPS-1 2026 — 4 vCores, 8 Go RAM, 75 Go |
+| OS | Ubuntu 24.04 (kernel 6.14) |
+| IPv4 | `51.178.44.114` |
+| Chemin app | `/root/streamtv` |
+| Process | PM2 (`streamtv`, port 3000) |
+| Reverse proxy | Nginx (port 80) |
+| BDD prod | `/root/streamtv/prod.db` (SQLite) |
+| Accès SSH | clé `~/.ssh/id_ed25519` (root) — pas de mot de passe |
+
+Guide complet pas à pas : **[`DEPLOIEMENT.md`](DEPLOIEMENT.md)** (SSH + sécurité, Node 22, clone GitHub, `.env`, `prisma db push`, build, PM2/systemd, Nginx, HTTPS Let's Encrypt, redéploiement, dépannage).
+
+Points clés :
+- Node **≥ 20** (reco 22 LTS), gestionnaire **npm**, port **3000** (`next start`, pas de mode `standalone`).
+- BDD SQLite : `npx prisma db push` (pas de migrations versionnées) ; `prisma generate` via `postinstall`.
+- Le proxy de flux (`runtime = "nodejs"`) requiert un **accès réseau sortant** → ne pas bloquer le trafic sortant.
+- Redéploiement rapide : `scripts/deploy.sh` (git pull → npm ci → db push → build → restart). Config PM2 : `ecosystem.config.js`.
+- HTTPS : nécessite un domaine pointé (A record) vers `51.178.44.114`, ou le hostname `vps-e09ed6db.vps.ovh.net` (`certbot --nginx -d vps-e09ed6db.vps.ovh.net`).
+
 ## Architecture détaillée
 
 1. **Auth** : cookie httpOnly `streamtv_session`, layout `/app/*` redirige si non connecté. `AuthProvider` expose la session côté client.
@@ -525,6 +549,10 @@ EPG France : `https://iptv-epg.org/files/epg-fr.xml`
 - **Robustesse** : erreurs subtitle (`subtitleTrackLoadError`, context `subtitleTrack`) ignorées — pas de `failStream`, pas de `startLoad()`, pas de retry ; retry limité aux erreurs fatal manifest/frag vidéo ; si CC activé et piste en échec, la vidéo continue.
 
 ## Dernière mise à jour
+
+2026-06-28 — **Déploiement production VPS OVH effectué** : app en ligne sur http://51.178.44.114 (Nginx → PM2 → Next.js 15, Node 22, SQLite `prod.db`). Accès SSH par clé ED25519 (root). Stack installée : git, build-essential, ufw (22/80/443), nginx, pm2. Secrets `.env` générés sur le serveur (`JWT_SECRET`, `CRON_SECRET`). `ecosystem.config.js` créé manuellement sur le VPS (fichier pas encore commité dans le repo). HTTPS disponible via `certbot --nginx -d vps-e09ed6db.vps.ovh.net` ou un domaine custom.
+
+2026-06-28 — **Guide de déploiement VPS OVH** : ajout de `DEPLOIEMENT.md` (guide complet en français : SSH/sécurité, Node 22, clone GitHub public/privé, `.env` + secrets, `prisma db push`, build, PM2/systemd, Nginx reverse proxy, HTTPS Let's Encrypt, redéploiement, dépannage), `scripts/deploy.sh` (redéploiement automatisé) et `ecosystem.config.js` (config PM2). Section « Déploiement (VPS OVH) » ajoutée ci-dessus. Aucune commande de déploiement exécutée (documentation seulement).
 
 2026-06-28 — **Lecteur persistant inline (portail) au lieu du popup docké** : l'utilisateur ne voulait pas du mini-lecteur en popup → le lecteur réapparaît à son **emplacement d'origine in-page** tout en gardant la lecture continue entre sections. **Technique** : l'instance unique `<VideoPlayer>`/hls.js reste montée dans `PersistentPlayer` (shell) mais est rendue via `createPortal(playerNode, target)` ; `target = slot ?? dockEl`. Chaque page expose un `<PlayerSlot/>` (`src/components/player-slot.tsx`) qui enregistre son `<div>` (`registerSlot`/`unregisterSlot` dans `PlayerProvider`) comme cible de portail. Comme la position du portail dans l'arbre React est stable (seul le conteneur DOM change), React **re-parente** le `<video>` au lieu de le re-monter → **aucune coupure**. Slots posés : accueil (avec empty state), chaînes et favoris (en tête, repliés tant que rien ne joue). Routes sans slot (Guide, Paramètres) → **fallback mini-lecteur docké** (bas-droite, `z-[45]`). **Mode théâtre supprimé**, `expanded` retiré du provider. Empty state « Sélectionnez une chaîne » conservé sur l'accueil. `next.config.ts` : `distDir` overridable via `NEXT_DIST_DIR` (build isolé sans toucher au `.next` du dev). Travail HLS/Pluto de `player-hooks.ts` **inchangé**. `npm run build` OK (build isolé `.next-build`). **Hard refresh `Cmd+Shift+R`** requis ; tester navigation Accueil ↔ Chaînes ↔ Favoris ↔ Guide pendant la lecture.
 
