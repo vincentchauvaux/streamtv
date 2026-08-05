@@ -566,6 +566,8 @@ EPG France : `https://iptv-epg.org/files/epg-fr.xml`
 
 ## Dernière mise à jour
 
+2026-08-05 — **Redéploiement prod** : VPS sur commit `5ca3807` (branche `cursor/vps-deployment-docs`) — pages légales + sécurité en ligne sur https://vps-e09ed6db.vps.ovh.net (port 3001). Canopée HTTPS OK.
+
 2026-08-05 — **Sécurité & légal** : pages Mentions légales / CGU / Confidentialité / Cookies ; bannière cookies RGPD ; footer + acceptation CGU à l'inscription ; headers HTTP (CSP, HSTS, X-Frame-Options, etc.) ; rate-limit login/register ; JWT_SECRET obligatoire en prod ; mot de passe min 8 ; CRON_SECRET forcé en prod ; `.env.example` enrichi.
 
 2026-07-02 — **Fix multi-sites VPS : Canopée restauré + StreamTV isolé** : StreamTV avait pris le port 3000 (port de Canopée) → canopée.be affichait StreamTV. **Fix** : Canopée relancé sur port **3000** (`/var/www/canopee`, PM2 `canopee`), StreamTV déplacé sur port **3001** (`/root/streamtv`, PM2 `streamtv`). Nginx route par `server_name` : `xn--canope-fva.be` → 3000, `vps-e09ed6db.vps.ovh.net` → 3001. Les deux sites coexistent sur le même VPS. `ecosystem.config.js` mis à jour (PORT 3001).
