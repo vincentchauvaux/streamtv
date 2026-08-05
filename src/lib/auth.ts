@@ -4,9 +4,17 @@ import { cookies } from "next/headers";
 import { prisma } from "./prisma";
 
 const COOKIE_NAME = "streamtv_session";
-const secret = new TextEncoder().encode(
-  process.env.JWT_SECRET ?? "streamtv-dev-secret"
-);
+
+function getJwtSecret(): Uint8Array {
+  const value = process.env.JWT_SECRET;
+  if (!value) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("JWT_SECRET manquant en production");
+    }
+    return new TextEncoder().encode("streamtv-dev-secret");
+  }
+  return new TextEncoder().encode(value);
+}
 
 export type SessionUser = {
   id: string;
@@ -23,7 +31,12 @@ export async function verifyPassword(password: string, hash: string) {
 }
 
 export async function createSession(user: SessionUser) {
-  const token = await new SignJWT({ sub: user.id, email: user.email, name: user.name })
+  const secret = getJwtSecret();
+  const token = await new SignJWT({
+    sub: user.id,
+    email: user.email,
+    name: user.name,
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("30d")
@@ -50,7 +63,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   if (!token) return null;
 
   try {
-    const { payload } = await jwtVerify(token, secret);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     const id = payload.sub;
     if (!id) return null;
 

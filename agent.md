@@ -137,7 +137,7 @@ Variables d'environnement (voir `.env.example`) :
 
 ## Déploiement (VPS OVH)
 
-**Production en ligne** : http://51.178.44.114 · http://vps-e09ed6db.vps.ovh.net
+**Production en ligne** : **https://vps-e09ed6db.vps.ovh.net** (HTTP → HTTPS redirigé)
 
 | Élément | Valeur |
 |---|---|
@@ -145,8 +145,11 @@ Variables d'environnement (voir `.env.example`) :
 | OS | Ubuntu 24.04 (kernel 6.14) |
 | IPv4 | `51.178.44.114` |
 | Chemin app | `/root/streamtv` |
-| Process | PM2 (`streamtv`, port 3000) |
-| Reverse proxy | Nginx (port 80) |
+| Port interne | **3001** (Canopée utilise 3000) |
+| Process | PM2 (`streamtv` + `canopee` sur le même VPS) |
+| Reverse proxy | Nginx — routage par `server_name` |
+| Canopée | https://canopée.be → port 3000 (`/var/www/canopee`) |
+| StreamTV | https://vps-e09ed6db.vps.ovh.net → port 3001 |
 | BDD prod | `/root/streamtv/prod.db` (SQLite) |
 | Accès SSH | clé `~/.ssh/id_ed25519` (root) — pas de mot de passe |
 
@@ -158,6 +161,19 @@ Points clés :
 - Le proxy de flux (`runtime = "nodejs"`) requiert un **accès réseau sortant** → ne pas bloquer le trafic sortant.
 - Redéploiement rapide : `scripts/deploy.sh` (git pull → npm ci → db push → build → restart). Config PM2 : `ecosystem.config.js`.
 - HTTPS : nécessite un domaine pointé (A record) vers `51.178.44.114`, ou le hostname `vps-e09ed6db.vps.ovh.net` (`certbot --nginx -d vps-e09ed6db.vps.ovh.net`).
+- En multi-sites (Canopée + StreamTV) : StreamTV écoute le **port 3001** ; Canopée garde le **3000**.
+
+## Sécurité & légal
+
+| Élément | Détail |
+|---|---|
+| Pages légales | `/mentions-legales`, `/cgu`, `/confidentialite`, `/cookies` |
+| Bannière cookies | `CookieBanner` (session technique uniquement, localStorage consent) |
+| Inscription | case à cocher acceptation CGU + confidentialité (`acceptTerms`) |
+| Headers HTTP | CSP, X-Frame-Options DENY, nosniff, Referrer-Policy, Permissions-Policy, HSTS (prod) via `next.config.ts` |
+| Auth | JWT httpOnly + Secure (prod) ; `JWT_SECRET` **obligatoire** en prod ; bcrypt cost 12 ; mot de passe min **8** |
+| Rate limit | login 10/15 min/IP ; register 5/15 min/IP ; proxy flux 600/min/user |
+| Cron | `CRON_SECRET` obligatoire en production (`Bearer`) |
 
 ## Architecture détaillée
 
@@ -549,6 +565,12 @@ EPG France : `https://iptv-epg.org/files/epg-fr.xml`
 - **Robustesse** : erreurs subtitle (`subtitleTrackLoadError`, context `subtitleTrack`) ignorées — pas de `failStream`, pas de `startLoad()`, pas de retry ; retry limité aux erreurs fatal manifest/frag vidéo ; si CC activé et piste en échec, la vidéo continue.
 
 ## Dernière mise à jour
+
+2026-08-05 — **Sécurité & légal** : pages Mentions légales / CGU / Confidentialité / Cookies ; bannière cookies RGPD ; footer + acceptation CGU à l'inscription ; headers HTTP (CSP, HSTS, X-Frame-Options, etc.) ; rate-limit login/register ; JWT_SECRET obligatoire en prod ; mot de passe min 8 ; CRON_SECRET forcé en prod ; `.env.example` enrichi.
+
+2026-07-02 — **Fix multi-sites VPS : Canopée restauré + StreamTV isolé** : StreamTV avait pris le port 3000 (port de Canopée) → canopée.be affichait StreamTV. **Fix** : Canopée relancé sur port **3000** (`/var/www/canopee`, PM2 `canopee`), StreamTV déplacé sur port **3001** (`/root/streamtv`, PM2 `streamtv`). Nginx route par `server_name` : `xn--canope-fva.be` → 3000, `vps-e09ed6db.vps.ovh.net` → 3001. Les deux sites coexistent sur le même VPS. `ecosystem.config.js` mis à jour (PORT 3001).
+
+2026-06-28 — **HTTPS activé + fix connexion/inscription impossible** : symptôme = impossible de se connecter ou créer un compte en prod. Cause racine = le cookie de session est posé avec `secure: process.env.NODE_ENV === "production"` (`src/lib/auth.ts`) → en prod le cookie est `Secure`, donc **rejeté par le navigateur sur HTTP**. L'API `/api/auth/register` renvoyait pourtant 200 (compte créé), mais la session n'était jamais stockée côté client. **Fix** : activation HTTPS via `certbot --nginx -d vps-e09ed6db.vps.ovh.net` (Let's Encrypt, redirect HTTP→HTTPS, renouvellement auto). Connexion/inscription OK sur https://vps-e09ed6db.vps.ovh.net. NB : pour un domaine custom, refaire `certbot --nginx -d <domaine>`.
 
 2026-06-28 — **Déploiement production VPS OVH effectué** : app en ligne sur http://51.178.44.114 (Nginx → PM2 → Next.js 15, Node 22, SQLite `prod.db`). Accès SSH par clé ED25519 (root). Stack installée : git, build-essential, ufw (22/80/443), nginx, pm2. Secrets `.env` générés sur le serveur (`JWT_SECRET`, `CRON_SECRET`). `ecosystem.config.js` créé manuellement sur le VPS (fichier pas encore commité dans le repo). HTTPS disponible via `certbot --nginx -d vps-e09ed6db.vps.ovh.net` ou un domaine custom.
 

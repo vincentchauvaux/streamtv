@@ -132,8 +132,24 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <footer className="border-t border-border-subtle py-8 text-center text-sm text-muted">
-        StreamTV — Lecteur IPTV personnel. Aucun contenu fourni.
+      <footer className="border-t border-border-subtle py-10">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-6 text-center text-sm text-muted">
+          <p>StreamTV — Lecteur IPTV personnel. Aucun contenu fourni.</p>
+          <nav className="flex flex-wrap justify-center gap-x-5 gap-y-2">
+            <Link href="/mentions-legales" className="hover:text-foreground">
+              Mentions légales
+            </Link>
+            <Link href="/cgu" className="hover:text-foreground">
+              CGU
+            </Link>
+            <Link href="/confidentialite" className="hover:text-foreground">
+              Confidentialité
+            </Link>
+            <Link href="/cookies" className="hover:text-foreground">
+              Cookies
+            </Link>
+          </nav>
+        </div>
       </footer>
     </div>
   );

@@ -7,6 +7,12 @@ export const LoginSchema = z.object({
 
 export const RegisterSchema = z.object({
   email: z.string().email("Email invalide"),
-  password: z.string().min(6, "Minimum 6 caractères"),
-  name: z.string().optional(),
+  password: z
+    .string()
+    .min(8, "Minimum 8 caractères")
+    .max(128, "Mot de passe trop long"),
+  name: z.string().max(80).optional(),
+  acceptTerms: z.literal(true, {
+    errorMap: () => ({ message: "Vous devez accepter les CGU" }),
+  }),
 });
