@@ -566,6 +566,8 @@ EPG France : `https://iptv-epg.org/files/epg-fr.xml`
 
 ## Dernière mise à jour
 
+2026-08-05 — **Favicon play** : `src/app/icon.tsx` remplacé (lettre « S ») par une icône triangle play lecteur vidéo sur fond primary `#7c6cf0`.
+
 2026-08-05 — **Redéploiement prod** : VPS sur commit `5ca3807` (branche `cursor/vps-deployment-docs`) — pages légales + sécurité en ligne sur https://vps-e09ed6db.vps.ovh.net (port 3001). Canopée HTTPS OK.
 
 2026-08-05 — **Sécurité & légal** : pages Mentions légales / CGU / Confidentialité / Cookies ; bannière cookies RGPD ; footer + acceptation CGU à l'inscription ; headers HTTP (CSP, HSTS, X-Frame-Options, etc.) ; rate-limit login/register ; JWT_SECRET obligatoire en prod ; mot de passe min 8 ; CRON_SECRET forcé en prod ; `.env.example` enrichi.
