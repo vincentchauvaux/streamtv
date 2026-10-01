@@ -7,23 +7,32 @@ import { playlistRepository } from "@/lib/repositories/playlist.repository";
 import { epgService } from "@/lib/services/epg.service";
 import { logger } from "@/lib/logger";
 import { cache, cacheKeys } from "@/lib/cache";
+import { safeOutboundFetch, validateOutboundUrl } from "@/lib/outbound-url";
 import type { ImportSummary } from "@/types/import";
 
 async function checkStreamOnline(url: string): Promise<boolean> {
+  const validation = validateOutboundUrl(url);
+  if (!validation.ok) return false;
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(url, {
-      method: "HEAD",
-      headers: { "User-Agent": "StreamTV/1.0" },
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (res.ok) return true;
-    const getRes = await fetch(url, {
+    try {
+      const res = await safeOutboundFetch(validation.url.href, {
+        method: "HEAD",
+        headers: { "User-Agent": "StreamTV/1.0" },
+        timeoutMs: 5000,
+        signal: controller.signal,
+      });
+      if (res.ok) return true;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const getRes = await safeOutboundFetch(validation.url.href, {
       method: "GET",
       headers: { "User-Agent": "StreamTV/1.0" },
-      signal: AbortSignal.timeout(5000),
+      timeoutMs: 5000,
     });
     return getRes.ok;
   } catch (error) {
@@ -37,11 +46,16 @@ async function fetchLogoMeta(logoUrl: string): Promise<{
   width: number | null;
   height: number | null;
 }> {
+  const validation = validateOutboundUrl(logoUrl);
+  if (!validation.ok) {
+    return { etag: null, width: null, height: null };
+  }
+
   try {
-    const res = await fetch(logoUrl, {
+    const res = await safeOutboundFetch(validation.url.href, {
       method: "HEAD",
       headers: { "User-Agent": "StreamTV/1.0" },
-      signal: AbortSignal.timeout(5000),
+      timeoutMs: 5000,
     });
     return {
       etag: res.headers.get("etag"),

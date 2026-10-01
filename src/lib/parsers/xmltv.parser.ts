@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
+import { safeOutboundFetch, validateOutboundUrl } from "@/lib/outbound-url";
 
 export type EpgProgram = {
   channelRef: string;
@@ -61,9 +62,14 @@ export function parseXmltv(xml: string): EpgProgram[] {
 }
 
 export async function fetchXmltv(url: string): Promise<EpgProgram[]> {
-  const res = await fetch(url, {
+  const validation = validateOutboundUrl(url);
+  if (!validation.ok) {
+    throw new Error(`URL EPG refusée: ${validation.reason}`);
+  }
+
+  const res = await safeOutboundFetch(validation.url.href, {
     headers: { "User-Agent": "StreamTV/1.0" },
-    next: { revalidate: 1800 },
+    timeoutMs: 60_000,
   });
   if (!res.ok) throw new Error(`Impossible de télécharger l'EPG (${res.status})`);
   const xml = await res.text();

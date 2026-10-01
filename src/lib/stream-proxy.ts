@@ -1,6 +1,11 @@
 import { randomBytes } from "crypto";
 import { cache } from "@/lib/cache";
 import { logger } from "@/lib/logger";
+import {
+  safeOutboundFetch,
+  validateOutboundUrl,
+  type OutboundUrlValidation,
+} from "@/lib/outbound-url";
 
 const MAX_STREAM_URL_LENGTH = 4096;
 const PROXY_URL_FALLBACK_MAX_LENGTH = 1500;
@@ -12,14 +17,6 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 600;
 const UPSTREAM_TIMEOUT_MS = 30_000;
 
-const BLOCKED_HOSTNAMES = new Set([
-  "localhost",
-  "0.0.0.0",
-  "::1",
-  "metadata.google.internal",
-  "metadata.google.internal.",
-]);
-
 /** URI="...", URI='...', URI=unquoted (HLS) */
 const URI_ATTR_RE = /URI=(?:"([^"]*)"|'([^']*)'|([^",\s]+))/g;
 const PROXY_TOKEN_PATH_RE = /^\/api\/stream\/proxy\/[A-Za-z0-9_-]+$/;
@@ -29,9 +26,7 @@ type RateLimitEntry = { count: number; resetAt: number };
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
-export type StreamUrlValidation =
-  | { ok: true; url: URL }
-  | { ok: false; reason: string };
+export type StreamUrlValidation = OutboundUrlValidation;
 
 export type StreamProxyTokenEntry = {
   url: string;
@@ -39,62 +34,7 @@ export type StreamProxyTokenEntry = {
 };
 
 export function validateStreamUrl(rawUrl: string): StreamUrlValidation {
-  if (!rawUrl || rawUrl.length > MAX_STREAM_URL_LENGTH) {
-    return { ok: false, reason: "URL trop longue ou vide" };
-  }
-
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return { ok: false, reason: "URL invalide" };
-  }
-
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return { ok: false, reason: "Protocole non autorisé" };
-  }
-
-  if (parsed.username || parsed.password) {
-    return { ok: false, reason: "Identifiants dans l'URL interdits" };
-  }
-
-  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-
-  if (BLOCKED_HOSTNAMES.has(hostname)) {
-    return { ok: false, reason: "Hôte interdit" };
-  }
-
-  if (hostname.endsWith(".localhost") || hostname.endsWith(".local")) {
-    return { ok: false, reason: "Hôte local interdit" };
-  }
-
-  if (isBlockedIp(hostname)) {
-    return { ok: false, reason: "Adresse privée ou locale interdite" };
-  }
-
-  return { ok: true, url: parsed };
-}
-
-function isBlockedIp(hostname: string): boolean {
-  const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4) {
-    const octets = ipv4.slice(1, 5).map(Number);
-    if (octets.some((o) => o > 255)) return true;
-    const [a, b] = octets;
-    if (a === 127 || a === 0) return true;
-    if (a === 10) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true;
-    return false;
-  }
-
-  const lower = hostname.toLowerCase();
-  if (lower === "::1" || lower.startsWith("fe80:") || lower.startsWith("fc") || lower.startsWith("fd")) {
-    return true;
-  }
-
-  return false;
+  return validateOutboundUrl(rawUrl);
 }
 
 export function checkStreamProxyRateLimit(userId: string): boolean {
@@ -224,7 +164,7 @@ function m3u8ResponseHeaders(
 }
 
 function generateProxyToken(): string {
-  return randomBytes(6).toString("base64url");
+  return randomBytes(16).toString("base64url");
 }
 
 function inferTokenTtl(url: string): number {
@@ -330,17 +270,23 @@ export async function proxyStreamFetch(
 
   let upstream: Response;
   try {
-    upstream = await fetch(targetUrl.href, {
+    upstream = await safeOutboundFetch(targetUrl.href, {
       method: "GET",
-      redirect: "follow",
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      timeoutMs: UPSTREAM_TIMEOUT_MS,
       headers: {
         "User-Agent": STREAM_PROXY_USER_AGENT,
         Accept: "*/*",
         Referer: `${targetUrl.origin}/`,
       },
     });
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.startsWith("URL refusée")) {
+      return new Response(JSON.stringify({ error: message }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     return new Response(JSON.stringify({ error: "Flux inaccessible (timeout ou hors ligne)" }), {
       status: 502,
       headers: { "Content-Type": "application/json" },

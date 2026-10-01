@@ -3,18 +3,18 @@ import { scanService } from "@/lib/services/scan.service";
 import { epgService } from "@/lib/services/epg.service";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(request: Request) {
+async function runCron(request: Request) {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
   if (!cronSecret) {
-    if (process.env.NODE_ENV === "production") {
-      return NextResponse.json(
-        { error: "CRON_SECRET non configuré" },
-        { status: 503 }
-      );
-    }
-  } else if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json(
+      { error: "CRON_SECRET non configuré" },
+      { status: 503 }
+    );
+  }
+
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
@@ -37,4 +37,13 @@ export async function GET(request: Request) {
     epg: epgResults,
     timestamp: new Date().toISOString(),
   });
+}
+
+/** Préférer POST ; GET conservé pour compatibilité (même auth Bearer). */
+export async function POST(request: Request) {
+  return runCron(request);
+}
+
+export async function GET(request: Request) {
+  return runCron(request);
 }

@@ -2,7 +2,10 @@ import { z } from "zod";
 
 export const LoginSchema = z.object({
   email: z.string().email("Email invalide"),
-  password: z.string().min(1, "Mot de passe requis"),
+  password: z
+    .string()
+    .min(1, "Mot de passe requis")
+    .max(128, "Mot de passe trop long"),
 });
 
 export const RegisterSchema = z.object({

@@ -170,10 +170,14 @@ Points clés :
 | Pages légales | `/mentions-legales`, `/cgu`, `/confidentialite`, `/cookies` |
 | Bannière cookies | `CookieBanner` (session technique uniquement, localStorage consent) |
 | Inscription | case à cocher acceptation CGU + confidentialité (`acceptTerms`) |
-| Headers HTTP | CSP, X-Frame-Options DENY, nosniff, Referrer-Policy, Permissions-Policy, HSTS (prod) via `next.config.ts` |
-| Auth | JWT httpOnly + Secure (prod) ; `JWT_SECRET` **obligatoire** en prod ; bcrypt cost 12 ; mot de passe min **8** |
-| Rate limit | login 10/15 min/IP ; register 5/15 min/IP ; proxy flux 600/min/user |
-| Cron | `CRON_SECRET` obligatoire en production (`Bearer`) |
+| Headers HTTP | CSP, HSTS (prod), X-Frame-Options DENY, nosniff, Referrer-Policy, Permissions-Policy, COOP, CORP via `next.config.ts` + middleware |
+| Auth | JWT httpOnly + Secure (prod) ; `JWT_SECRET` **obligatoire** en prod ; bcrypt cost 12 ; mot de passe min **8** / max **128** (login inclus) |
+| Rate limit | login 10/15 min/IP ; register 5/15 min/IP ; import 20/h/user ; scan 30/h/user ; proxy flux 600/min/user |
+| Cron | `CRON_SECRET` Bearer **toujours** requis (GET+POST) ; middleware refuse sans `Authorization` |
+| Anti-SSRF | `src/lib/outbound-url.ts` — validation partagée + `safeOutboundFetch` (redirects re-validés) pour proxy, M3U, EPG, logos, check online |
+| CSRF léger | middleware : Origin/Referer same-origin sur mutations `/api/*` |
+| Tokens proxy | 128 bits (`randomBytes(16)` base64url) |
+| Proxy IP | `TRUST_PROXY=1` recommandé derrière Nginx (lit `X-Real-IP`) |
 
 ## Architecture détaillée
 
@@ -565,6 +569,8 @@ EPG France : `https://iptv-epg.org/files/epg-fr.xml`
 - **Robustesse** : erreurs subtitle (`subtitleTrackLoadError`, context `subtitleTrack`) ignorées — pas de `failStream`, pas de `startLoad()`, pas de retry ; retry limité aux erreurs fatal manifest/frag vidéo ; si CC activé et piste en échec, la vidéo continue.
 
 ## Dernière mise à jour
+
+2026-09-26 — **Renforcement sécurité** : module anti-SSRF `outbound-url.ts` (validation + fetch avec re-check des redirects) branché sur proxy, M3U, EPG, scan/logos ; tokens proxy 128 bits ; cron Bearer obligatoire (dev+prod) + POST ; rate-limit import/scan ; login password max 128 ; middleware CSRF Origin + garde cron ; headers COOP/CORP ; `TRUST_PROXY` pour IP derrière Nginx ; CSP `upgrade-insecure-requests` en prod.
 
 2026-08-05 — **Favicon play** : `src/app/icon.tsx` remplacé (lettre « S ») par une icône triangle play lecteur vidéo sur fond primary `#7c6cf0`.
 

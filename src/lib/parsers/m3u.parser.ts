@@ -1,3 +1,5 @@
+import { safeOutboundFetch, validateOutboundUrl } from "@/lib/outbound-url";
+
 export type M3UChannel = {
   name: string;
   url: string;
@@ -73,9 +75,14 @@ export function parseM3U(content: string): M3UChannel[] {
 }
 
 export async function fetchM3U(url: string): Promise<M3UChannel[]> {
-  const res = await fetch(url, {
+  const validation = validateOutboundUrl(url);
+  if (!validation.ok) {
+    throw new Error(`URL playlist refusée: ${validation.reason}`);
+  }
+
+  const res = await safeOutboundFetch(validation.url.href, {
     headers: { "User-Agent": "StreamTV/1.0" },
-    next: { revalidate: 3600 },
+    timeoutMs: 60_000,
   });
   if (!res.ok) throw new Error(`Impossible de télécharger la playlist (${res.status})`);
   const text = await res.text();
