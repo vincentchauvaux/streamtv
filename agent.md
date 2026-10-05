@@ -1,18 +1,62 @@
 # StreamTV — Agent
 
-Application IPTV full-stack : playlists M3U, guide EPG, favoris synchronisés, reprise de lecture et recommandations.
+Application IPTV : playlists M3U, favoris, lecture HLS. **Ce n'est pas WordPress** — Next.js historiquement, **binaire Rust** en cours de remplacement.
 
-## Stack
+## Stack (cible — Rust)
+
+- **Serveur** : un binaire Axum (`server/`) — auth, API, proxy de flux, HTML
+- **Base** : le **même SQLite Prisma** (`User`, `Playlist`, `Channel`, `Stream`…) — pas de nouvelle base
+- **Auth** : JWT HS256 cookie httpOnly `streamtv_session` (comptes existants, bcrypt cost 12)
+- **UI** : HTML/CSS/JS dans `server/ui/` — **hls.js reste obligatoire** dans Chrome (MSE) ; Safari HLS natif
+- **Ancien stack** : Next.js 15 + React 19 + Prisma dans `src/` — encore présent, plus la cible de prod
+
+## Couches (Rust)
+
+```
+Axum (CSRF + headers) → handlers → rusqlite (WAL) / tokens proxy → SQLite
+```
+
+L’ancien chemin Next (`API Route → Zod → Service → Repository → Prisma`) reste dans `src/` jusqu’au cutover VPS (script `deploy/install-rust.sh`).
+
+## Démarrage Rust
+
+```bash
+cd ~/streamtv/server
+STREAMTV_LISTEN=127.0.0.1:3002 cargo run
+# http://127.0.0.1:3002  — SQLite via DATABASE_URL (.env parent) ou prisma/dev.db
+```
+
+Prod : port **3001** (`STREAMTV_LISTEN=127.0.0.1:3001`), `prisma/prod.db` / `JWT_SECRET` / `CRON_SECRET`. **Bascule VPS faite** (`streamtv.service` + timer cron).
+
+Variables : `DATABASE_URL`, `JWT_SECRET` (obligatoire en prod), `CRON_SECRET` (cron systemd), `TRUST_PROXY=1` derrière nginx, `STREAMTV_LISTEN`, `STREAMTV_ENV=production`.
+
+## Structure Rust
+
+```
+server/
+├── Cargo.toml
+├── src/     # main, config, db, auth, rate, outbound, proxy, m3u, xmltv, normalize, http
+└── ui/      # index.html, app.html, app.css, app.js, landing.js
+deploy/
+├── streamtv.service
+├── streamtv-cron.service
+├── streamtv-cron.timer
+└── install-rust.sh
+```
+
+**Rust aujourd’hui** : login/register, chaînes + recherche, favoris, stats, import M3U / démo, rescan, EPG/guide (XMLTV), cron 24 h, recommandations, admin santé, proxy HLS tokens + rewrite m3u8, loader hls.js custom (retry token + stall live), anti-SSRF (DNS→IP).
+
+## Stack historique (Next.js)
 
 - **Frontend** : Next.js 15 (App Router), React 19, Tailwind CSS 4
 - **Backend** : API Routes Next.js
 - **Base de données** : SQLite via Prisma
 - **Validation** : Zod (schémas centralisés)
 - **Auth** : JWT en cookie httpOnly (bcrypt + jose)
-- **Lecteur** : hls.js pour flux HLS (.m3u8), détection type de flux
-- **UI** : Lucide icons, design system custom, `@tanstack/react-virtual` pour listes longues
+- **Lecteur** : hls.js pour flux HLS (.m3u8)
+- **UI** : Lucide, `@tanstack/react-virtual`
 
-## Couches (architecture)
+## Couches Next (héritage)
 
 ```
 API Route → Validation (Zod) → Service métier → Repository → Prisma → SQLite
@@ -146,22 +190,32 @@ Variables d'environnement (voir `.env.example`) :
 | IPv4 | `51.178.44.114` |
 | Chemin app | `/root/streamtv` |
 | Port interne | **3001** (Canopée utilise 3000) |
-| Process | PM2 (`streamtv` + `canopee` sur le même VPS) |
+| Process (cible) | **systemd `streamtv`** (binaire Rust) — ancien : PM2 Next |
 | Reverse proxy | Nginx — routage par `server_name` |
 | Canopée | https://canopée.be → port 3000 (`/var/www/canopee`) |
 | StreamTV | https://vps-e09ed6db.vps.ovh.net → port 3001 |
 | BDD prod | `/root/streamtv/prod.db` (SQLite) |
 | Accès SSH | clé `~/.ssh/id_ed25519` (root) — pas de mot de passe |
 
-Guide complet pas à pas : **[`DEPLOIEMENT.md`](DEPLOIEMENT.md)** (SSH + sécurité, Node 22, clone GitHub, `.env`, `prisma db push`, build, PM2/systemd, Nginx, HTTPS Let's Encrypt, redéploiement, dépannage).
+### Bascule Rust (recommandé)
+
+Sur le VPS, depuis `/root/streamtv` (après `git pull` ou rsync du dépôt) :
+
+```bash
+# Prérequis : rustup / cargo sur le VPS
+sh deploy/install-rust.sh
+```
+
+Cela compile `server/` en release, installe `/usr/local/bin/streamtv`, active `streamtv.service` + timer cron 6 h, arrête PM2 `streamtv`. Nginx reste inchangé (proxy → 3001). Rollback : `systemctl stop streamtv` puis `pm2 start ecosystem.config.js`.
+
+Guide historique Next/PM2 : **[`DEPLOIEMENT.md`](DEPLOIEMENT.md)**.
 
 Points clés :
-- Node **≥ 20** (reco 22 LTS), gestionnaire **npm**, port **3000** (`next start`, pas de mode `standalone`).
-- BDD SQLite : `npx prisma db push` (pas de migrations versionnées) ; `prisma generate` via `postinstall`.
-- Le proxy de flux (`runtime = "nodejs"`) requiert un **accès réseau sortant** → ne pas bloquer le trafic sortant.
-- Redéploiement rapide : `scripts/deploy.sh` (git pull → npm ci → db push → build → restart). Config PM2 : `ecosystem.config.js`.
-- HTTPS : nécessite un domaine pointé (A record) vers `51.178.44.114`, ou le hostname `vps-e09ed6db.vps.ovh.net` (`certbot --nginx -d vps-e09ed6db.vps.ovh.net`).
-- En multi-sites (Canopée + StreamTV) : StreamTV écoute le **port 3001** ; Canopée garde le **3000**.
+- Binaire Rust : pas besoin de `npm run build` pour la prod Rust.
+- BDD SQLite inchangée (`prod.db`) — même schéma Prisma.
+- Le proxy de flux requiert un **accès réseau sortant**.
+- Cron : timer systemd `streamtv-cron.timer` (Bearer `CRON_SECRET`).
+- HTTPS : hostname `vps-e09ed6db.vps.ovh.net` déjà certifié.
 
 ## Sécurité & légal
 
@@ -569,6 +623,12 @@ EPG France : `https://iptv-epg.org/files/epg-fr.xml`
 - **Robustesse** : erreurs subtitle (`subtitleTrackLoadError`, context `subtitleTrack`) ignorées — pas de `failStream`, pas de `startLoad()`, pas de retry ; retry limité aux erreurs fatal manifest/frag vidéo ; si CC activé et piste en échec, la vidéo continue.
 
 ## Dernière mise à jour
+
+2026-10-05 — **Bascule VPS Rust** : `streamtv.service` sur `127.0.0.1:3001`, PM2 Next retiré. `DATABASE_URL=file:./prisma/prod.db`. Timer cron 6 h. Rollback : `systemctl stop streamtv` puis `pm2 start ecosystem.config.js`.
+
+2026-10-05 — **Parité Rust** : rescan (`POST /api/playlists/scan`), EPG XMLTV + Guide, cron Bearer (`/api/cron/scan`), recommandations, admin santé, loader hls.js proxy + récupération stall live. Deploy systemd : `deploy/install-rust.sh` (remplace PM2/Next sur :3001). Next.js reste dans `src/` pour rollback.
+
+2026-10-03 — **Début migration Rust** : crate `server/` (Axum + rusqlite) sur le SQLite Prisma existant. Cookie JWT `streamtv_session` compatible, proxy HLS tokens + rewrite m3u8, anti-SSRF avec résolution DNS, UI HTML + hls.js. Next.js toujours dans `src/` ; prod VPS encore PM2/Node :3001. Local : `STREAMTV_LISTEN=127.0.0.1:3002 cargo run` dans `server/`.
 
 2026-09-26 — **Renforcement sécurité** : module anti-SSRF `outbound-url.ts` (validation + fetch avec re-check des redirects) branché sur proxy, M3U, EPG, scan/logos ; tokens proxy 128 bits ; cron Bearer obligatoire (dev+prod) + POST ; rate-limit import/scan ; login password max 128 ; middleware CSRF Origin + garde cron ; headers COOP/CORP ; `TRUST_PROXY` pour IP derrière Nginx ; CSP `upgrade-insecure-requests` en prod.
 

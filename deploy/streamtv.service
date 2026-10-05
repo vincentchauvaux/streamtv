@@ -1,0 +1,19 @@
+[Unit]
+Description=StreamTV IPTV (Rust / Axum)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/streamtv
+EnvironmentFile=-/root/streamtv/.env
+Environment=STREAMTV_ENV=production
+Environment=STREAMTV_LISTEN=127.0.0.1:3001
+Environment=TRUST_PROXY=1
+ExecStart=/usr/local/bin/streamtv
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

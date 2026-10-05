@@ -1,0 +1,29 @@
+[package]
+name = "streamtv"
+version = "0.1.0"
+edition = "2021"
+description = "StreamTV — serveur IPTV Rust (Axum + SQLite)"
+
+[dependencies]
+axum = { version = "0.8", features = ["macros"] }
+base64 = "0.22"
+bcrypt = "0.16"
+bytes = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+futures-util = "0.3"
+jsonwebtoken = "9"
+parking_lot = "0.12"
+quick-xml = { version = "0.37", features = ["serialize"] }
+rand = "0.8"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["set-header"] }
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

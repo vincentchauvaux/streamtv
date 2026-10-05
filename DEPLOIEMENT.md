@@ -6,7 +6,30 @@ Guide complet et copiable pour mettre **StreamTV** en production sur votre VPS O
 > **IPv4** : `51.178.44.114` · **Hostname** : `vps-e09ed6db.vps.ovh.net`
 > **OS supposé** : Ubuntu 24.04 LTS (adaptez `apt` si Debian)
 
-## Résumé technique de l'app
+## Stack actuelle (Rust)
+
+Depuis octobre 2026, la **cible de production** est le binaire Axum dans `server/` :
+
+```bash
+# Sur le VPS, depuis /root/streamtv (après sync du dépôt)
+# Prérequis : curl https://sh.rustup.rs | sh
+sh deploy/install-rust.sh
+```
+
+| Élément | Valeur |
+|---|---|
+| Serveur | Rust / Axum (`/usr/local/bin/streamtv`) |
+| Process | systemd `streamtv.service` + timer cron 6 h |
+| Port | **3001** |
+| Base | SQLite `prod.db` (schéma Prisma inchangé) |
+| Variables | `DATABASE_URL`, `JWT_SECRET`, `CRON_SECRET`, `TRUST_PROXY=1`, `STREAMTV_ENV=production` |
+| Rollback | `systemctl stop streamtv` puis `pm2 start ecosystem.config.js` (Next) |
+
+Le reste de ce guide décrit l’historique **Next.js + PM2** (toujours valide pour un rollback).
+
+---
+
+## Résumé technique de l'app (historique Next)
 
 | Élément | Valeur |
 |---|---|

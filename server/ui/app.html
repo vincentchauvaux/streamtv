@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StreamTV</title>
+  <link rel="stylesheet" href="/ui/app.css?v=4">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js" defer></script>
+  <script src="/ui/app.js?v=4" defer></script>
+</head>
+<body class="app bg-mesh">
+  <aside class="nav">
+    <div class="brand">
+      <span class="logo">▶</span>
+      <strong class="gradient">StreamTV</strong>
+    </div>
+    <nav>
+      <button data-view="home" class="active">Accueil</button>
+      <button data-view="channels">Chaînes</button>
+      <button data-view="favorites">Favoris</button>
+      <button data-view="guide">Guide</button>
+      <button data-view="settings">Playlists</button>
+      <button data-view="admin">Admin</button>
+    </nav>
+    <div class="nav-foot">
+      <span id="who" class="muted"></span>
+      <button id="logout" class="btn ghost">Quitter</button>
+    </div>
+  </aside>
+  <main>
+    <section id="player-wrap" class="player-wrap">
+      <video id="video" playsinline controls></video>
+      <p id="player-empty" class="empty">Sélectionnez une chaîne pour commencer</p>
+      <p id="player-err" class="err" hidden></p>
+    </section>
+    <section id="view-home" class="view">
+      <div id="stats" class="stats"></div>
+      <h2>Pour vous</h2>
+      <div id="reco" class="grid"></div>
+      <h2>Reprendre</h2>
+      <div id="history" class="grid"></div>
+    </section>
+    <section id="view-channels" class="view" hidden>
+      <div class="toolbar">
+        <input id="q" type="search" placeholder="Rechercher une chaîne…" autocomplete="off">
+        <select id="group"><option value="">Tous les groupes</option></select>
+      </div>
+      <div id="channels" class="grid"></div>
+    </section>
+    <section id="view-favorites" class="view" hidden>
+      <div id="favorites" class="grid"></div>
+    </section>
+    <section id="view-guide" class="view" hidden>
+      <div class="toolbar">
+        <button id="epg-refresh" class="btn ghost" type="button">Rafraîchir l’EPG</button>
+        <span id="epg-status" class="muted"></span>
+      </div>
+      <div id="guide" class="guide-list"></div>
+    </section>
+    <section id="view-settings" class="view" hidden>
+      <div class="card">
+        <h2>Importer une playlist M3U</h2>
+        <form id="import-form">
+          <label>Nom <input name="name" required maxlength="120" placeholder="France"></label>
+          <label>URL M3U <input name="url" type="url" required placeholder="https://…"></label>
+          <label>URL EPG (optionnel) <input name="epgUrl" type="url" placeholder="https://…xml"></label>
+          <p class="err" id="import-err" hidden></p>
+          <button class="btn primary" type="submit">Importer</button>
+        </form>
+        <p class="muted">StreamTV ne fournit aucun flux. Utilisez des listes légales (iptv-org, Free-TV…).</p>
+        <button id="import-demo" class="btn ghost" type="button">Importer les chaînes démo (iptv-org / Free-TV)</button>
+      </div>
+      <div id="playlists"></div>
+    </section>
+    <section id="view-admin" class="view" hidden>
+      <div id="admin" class="card"></div>
+    </section>
+  </main>
+</body>
+</html>
