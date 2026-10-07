@@ -145,6 +145,7 @@ impl Db {
         .map_err(|e| e.to_string())
     }
 
+    #[allow(dead_code)] // réservé création de compte hors inscription publique
     pub fn insert_user(
         &self,
         id: &str,

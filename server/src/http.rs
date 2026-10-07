@@ -13,8 +13,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::auth::{
-    clear_cookie, hash_password, issue_token, session_cookie, token_from_cookie_header,
-    user_id_from_token, valid_email, verify_password,
+    clear_cookie, issue_token, session_cookie, token_from_cookie_header, user_id_from_token,
+    valid_email, verify_password, DUMMY_PASSWORD_HASH,
 };
 use crate::config::Config;
 use crate::db::{new_id, ChannelDto, Db, NewChannel, User};
@@ -80,7 +80,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/cookies", get(legal_cookies))
         .route("/healthz", get(|| async { "ok" }))
         .route("/api/auth/login", post(login))
-        .route("/api/auth/register", post(register).get(me))
+        .route("/api/auth/register", post(register_closed))
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
         .route("/api/channels", get(channels))
@@ -99,8 +99,43 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/stream/proxy/register", post(proxy_register))
         .route("/api/stream/proxy/{token}", get(proxy_token))
         .route("/api/stream/proxy", get(proxy_query))
+        .layer(middleware::from_fn_with_state(app.clone(), auth_gate))
         .layer(middleware::from_fn_with_state(app.clone(), csrf_and_headers))
         .with_state(app)
+}
+
+/// Chemins accessibles sans session. Tout le reste exige une connexion.
+fn is_public_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/" | "/healthz"
+            | "/ui/app.css"
+            | "/ui/landing.js"
+            | "/api/auth/login"
+            | "/api/auth/me"
+            | "/api/auth/register" // public mais toujours 403 (inscription fermée)
+            | "/api/cron/scan"
+    )
+}
+
+async fn auth_gate(
+    State(app): State<Arc<App>>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let path = req.uri().path().to_string();
+    if is_public_path(&path) {
+        return next.run(req).await;
+    }
+    let headers = req.headers().clone();
+    if session_user(&app, &headers).await.is_some() {
+        return next.run(req).await;
+    }
+    if path.starts_with("/api/") {
+        return err(StatusCode::UNAUTHORIZED, "Non authentifié");
+    }
+    // Pages HTML et assets app : uniquement la page de connexion.
+    Redirect::temporary("/").into_response()
 }
 
 fn css(body: &'static str) -> impl IntoResponse {
@@ -121,29 +156,30 @@ async fn landing(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
     if session_user(&app, &headers).await.is_some() {
         return Redirect::to("/app").into_response();
     }
-    Html(INDEX_HTML).into_response()
+    let mut res = Html(INDEX_HTML).into_response();
+    let h = res.headers_mut();
+    h.insert(header::CACHE_CONTROL, "no-store, no-cache, must-revalidate".parse().unwrap());
+    h.insert(header::PRAGMA, "no-cache".parse().unwrap());
+    h.insert("x-robots-tag", "noindex, nofollow".parse().unwrap());
+    res
 }
 
 async fn app_page(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
     if session_user(&app, &headers).await.is_none() {
         return Redirect::to("/").into_response();
     }
-    Html(APP_HTML).into_response()
+    let mut res = Html(APP_HTML).into_response();
+    res.headers_mut().insert(
+        header::CACHE_CONTROL,
+        "no-store, no-cache, must-revalidate".parse().unwrap(),
+    );
+    res
 }
 
 #[derive(Deserialize)]
 struct LoginBody {
     email: String,
     password: String,
-}
-
-#[derive(Deserialize)]
-struct RegisterBody {
-    email: String,
-    password: String,
-    name: Option<String>,
-    #[serde(rename = "acceptTerms")]
-    accept_terms: Option<bool>,
 }
 
 async fn login(
@@ -153,76 +189,73 @@ async fn login(
     Json(body): Json<LoginBody>,
 ) -> Response {
     let ip = client_ip(&app, &headers, addr);
+    // Strict : 5 essais / 15 min / IP (+ clé email pour ralentir le spray).
     if app
         .rate
-        .check(&format!("auth:login:{ip}"), 10, Duration::from_secs(15 * 60))
+        .check(&format!("auth:login:{ip}"), 5, Duration::from_secs(15 * 60))
         .is_err()
     {
-        return err(StatusCode::TOO_MANY_REQUESTS, "Trop de tentatives. Réessayez dans quelques minutes.");
+        return err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Trop de tentatives. Réessayez dans quelques minutes.",
+        );
     }
-    if body.password.is_empty() || body.password.len() > 128 || !valid_email(&body.email) {
-        return err(StatusCode::BAD_REQUEST, "Email ou mot de passe incorrect");
+    let email = body.email.trim();
+    let email_key = email.to_ascii_lowercase();
+    let email_key = if email_key.len() > 64 {
+        &email_key[..64]
+    } else {
+        email_key.as_str()
+    };
+    if app
+        .rate
+        .check(
+            &format!("auth:login:email:{email_key}"),
+            8,
+            Duration::from_secs(15 * 60),
+        )
+        .is_err()
+    {
+        return err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Trop de tentatives. Réessayez dans quelques minutes.",
+        );
     }
-    let found = match app.db.user_by_email(body.email.trim()) {
+    // Message unique — pas d'énumération d'e-mails.
+    const FAIL: &str = "Email ou mot de passe incorrect";
+    if body.password.len() < 8 || body.password.len() > 128 || !valid_email(email) {
+        // Même coût approximatif (bcrypt dummy) pour les entrées invalides.
+        let password = body.password.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            verify_password(&password, DUMMY_PASSWORD_HASH)
+        })
+        .await;
+        return err(StatusCode::UNAUTHORIZED, FAIL);
+    }
+    let found = match app.db.user_by_email(email) {
         Ok(v) => v,
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &e),
     };
-    let Some((user, hash)) = found else {
-        return err(StatusCode::UNAUTHORIZED, "Email ou mot de passe incorrect");
+    let (user_opt, hash) = match found {
+        Some((user, hash)) => (Some(user), hash),
+        None => (None, DUMMY_PASSWORD_HASH.to_string()),
     };
     let password = body.password.clone();
     let ok = tokio::task::spawn_blocking(move || verify_password(&password, &hash))
         .await
         .unwrap_or(false);
     if !ok {
-        return err(StatusCode::UNAUTHORIZED, "Email ou mot de passe incorrect");
+        return err(StatusCode::UNAUTHORIZED, FAIL);
     }
+    let Some(user) = user_opt else {
+        return err(StatusCode::UNAUTHORIZED, FAIL);
+    };
     set_session(&app, user)
 }
 
-async fn register(
-    State(app): State<Arc<App>>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Json(body): Json<RegisterBody>,
-) -> Response {
-    let ip = client_ip(&app, &headers, addr);
-    if app
-        .rate
-        .check(&format!("auth:register:{ip}"), 5, Duration::from_secs(15 * 60))
-        .is_err()
-    {
-        return err(StatusCode::TOO_MANY_REQUESTS, "Trop de tentatives. Réessayez dans quelques minutes.");
-    }
-    if body.accept_terms != Some(true) {
-        return err(StatusCode::BAD_REQUEST, "Vous devez accepter les CGU");
-    }
-    if !valid_email(&body.email) {
-        return err(StatusCode::BAD_REQUEST, "Email invalide");
-    }
-    if body.password.len() < 8 || body.password.len() > 128 {
-        return err(StatusCode::BAD_REQUEST, "Minimum 8 caractères");
-    }
-    let name = body
-        .name
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty() && s.len() <= 80);
-    let email = body.email.trim().to_string();
-    if app.db.user_by_email(&email).ok().flatten().is_some() {
-        return err(StatusCode::CONFLICT, "Cet email est déjà utilisé");
-    }
-    let password = body.password.clone();
-    let hash = match tokio::task::spawn_blocking(move || hash_password(&password)).await {
-        Ok(Ok(h)) => h,
-        _ => return err(StatusCode::INTERNAL_SERVER_ERROR, "Erreur serveur"),
-    };
-    let user = match app.db.insert_user(&new_id(), &email, name, &hash) {
-        Ok(u) => u,
-        Err(e) if e.contains("déjà") => return err(StatusCode::CONFLICT, &e),
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &e),
-    };
-    set_session(&app, user)
+/// Inscription publique fermée : seuls les comptes existants se connectent.
+async fn register_closed() -> Response {
+    err(StatusCode::FORBIDDEN, "Inscription désactivée")
 }
 
 async fn logout(State(app): State<Arc<App>>) -> Response {

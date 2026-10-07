@@ -6,7 +6,7 @@ Application IPTV : playlists M3U, favoris, lecture HLS. **Ce n'est pas WordPress
 
 - **Serveur** : un binaire Axum (`server/`) — auth, API, proxy de flux, HTML
 - **Base** : le **même SQLite Prisma** (`User`, `Playlist`, `Channel`, `Stream`…) — pas de nouvelle base
-- **Auth** : JWT HS256 cookie httpOnly `streamtv_session` (comptes existants, bcrypt cost 12)
+- **Auth** : JWT HS256 cookie httpOnly `SameSite=Strict` `streamtv_session` (comptes existants, bcrypt cost 12). Site **privé** : non connecté → page login uniquement ; inscription publique désactivée.
 - **UI** : HTML/CSS/JS dans `server/ui/` — **hls.js reste obligatoire** dans Chrome (MSE) ; Safari HLS natif
 - **Ancien stack** : Next.js 15 + React 19 + Prisma dans `src/` — encore présent, plus la cible de prod
 
@@ -623,6 +623,8 @@ EPG France : `https://iptv-epg.org/files/epg-fr.xml`
 - **Robustesse** : erreurs subtitle (`subtitleTrackLoadError`, context `subtitleTrack`) ignorées — pas de `failStream`, pas de `startLoad()`, pas de retry ; retry limité aux erreurs fatal manifest/frag vidéo ; si CC activé et piste en échec, la vidéo continue.
 
 ## Dernière mise à jour
+
+2026-10-07 — **Portail login-only** : sans session, seule `/` (connexion) + CSS/JS login sont visibles. Middleware `auth_gate` ; inscription publique fermée ; cookie `SameSite=Strict` ; rate-limit login 5/15 min/IP ; bcrypt dummy anti-énumération ; `Cache-Control: no-store` ; `noindex`.
 
 2026-10-05 — **Bascule VPS Rust** : `streamtv.service` sur `127.0.0.1:3001`, PM2 Next retiré. `DATABASE_URL=file:./prisma/prod.db`. Timer cron 6 h. Rollback : `systemctl stop streamtv` puis `pm2 start ecosystem.config.js`.
 

@@ -3,48 +3,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>StreamTV — vos chaînes, belles et synchronisées</title>
-  <link rel="stylesheet" href="/ui/app.css?v=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="same-origin">
+  <title>Connexion — StreamTV</title>
+  <link rel="stylesheet" href="/ui/app.css?v=5">
 </head>
-<body class="bg-mesh">
-  <header class="top">
-    <div class="brand">
+<body class="bg-mesh login-page">
+  <main class="login-shell">
+    <div class="brand login-brand">
       <span class="logo" aria-hidden="true">▶</span>
       <strong class="gradient">StreamTV</strong>
     </div>
-    <a class="btn ghost" href="#connexion">Connexion</a>
-  </header>
-  <section class="hero">
-    <p class="pill">Lecteur IPTV moderne · Mode sombre</p>
-    <h1>Vos chaînes TV, <span class="gradient">belles et synchronisées</span></h1>
-    <p class="lead">Importez une playlist M3U. Favoris, recherche et lecture HLS — sans WordPress, sans Node.</p>
-  </section>
-  <section id="connexion" class="auth-wrap">
-    <form id="login-form" class="card">
-      <h2>Connexion</h2>
-      <label>Email <input name="email" type="email" autocomplete="username" required></label>
-      <label>Mot de passe <input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
-      <p class="err" id="login-err" hidden></p>
-      <button type="submit" class="btn primary">Entrer</button>
-      <p class="muted"><button type="button" class="link" id="to-register">Créer un compte</button></p>
+    <form id="login-form" class="card login-card" method="post" action="/api/auth/login" autocomplete="on">
+      <h1>Connexion</h1>
+      <p class="muted login-lead">Accès réservé. Identifiez-vous pour continuer.</p>
+      <label>Email
+        <input name="email" type="email" autocomplete="username" required maxlength="254" inputmode="email" spellcheck="false">
+      </label>
+      <label>Mot de passe
+        <input name="password" type="password" autocomplete="current-password" required minlength="8" maxlength="128">
+      </label>
+      <p class="err" id="login-err" hidden role="alert"></p>
+      <button type="submit" class="btn primary" id="login-btn">Entrer</button>
     </form>
-    <form id="register-form" class="card" hidden>
-      <h2>Inscription</h2>
-      <label>Nom <input name="name" maxlength="80" autocomplete="name"></label>
-      <label>Email <input name="email" type="email" autocomplete="username" required></label>
-      <label>Mot de passe <input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128"></label>
-      <label class="check"><input name="acceptTerms" type="checkbox" required> J’accepte les <a href="/cgu">CGU</a> et la <a href="/confidentialite">confidentialité</a></label>
-      <p class="err" id="register-err" hidden></p>
-      <button type="submit" class="btn primary">Créer le compte</button>
-      <p class="muted"><button type="button" class="link" id="to-login">Déjà inscrit</button></p>
-    </form>
-  </section>
-  <footer class="foot">
-    <a href="/mentions-legales">Mentions légales</a>
-    <a href="/cgu">CGU</a>
-    <a href="/confidentialite">Confidentialité</a>
-    <a href="/cookies">Cookies</a>
-  </footer>
-  <script src="/ui/landing.js?v=1" defer></script>
+  </main>
+  <script src="/ui/landing.js?v=5" defer></script>
 </body>
 </html>

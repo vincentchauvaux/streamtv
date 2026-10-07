@@ -16,6 +16,7 @@ struct Claims {
     exp: u64,
 }
 
+#[allow(dead_code)] // réservé création de compte hors inscription publique
 pub fn hash_password(password: &str) -> Result<String, String> {
     bcrypt::hash(password, 12).map_err(|e| e.to_string())
 }
@@ -54,8 +55,9 @@ pub fn user_id_from_token(token: &str, secret: &str) -> Option<String> {
 }
 
 pub fn session_cookie(token: &str, secure: bool) -> String {
+    // SameSite=Strict : le cookie ne part pas en navigation cross-site (CSRF / fuite).
     let mut c = format!(
-        "{COOKIE_NAME}={token}; HttpOnly; Path=/; SameSite=Lax; Max-Age={TTL_SECS}"
+        "{COOKIE_NAME}={token}; HttpOnly; Path=/; SameSite=Strict; Max-Age={TTL_SECS}"
     );
     if secure {
         c.push_str("; Secure");
@@ -64,12 +66,16 @@ pub fn session_cookie(token: &str, secure: bool) -> String {
 }
 
 pub fn clear_cookie(secure: bool) -> String {
-    let mut c = format!("{COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0");
+    let mut c = format!("{COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0");
     if secure {
         c.push_str("; Secure");
     }
     c
 }
+
+/// Hash bcrypt factice (cost 12) pour égaliser le temps de réponse si l'email est inconnu.
+pub const DUMMY_PASSWORD_HASH: &str =
+    "$2b$12$DC8dIZLIjCxa3Em1igl11errkYLyNgtrc7U61j39HMmlnehZ9BuWG";
 
 pub fn token_from_cookie_header(header: Option<&str>) -> Option<String> {
     let header = header?;

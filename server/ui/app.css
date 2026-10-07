@@ -57,6 +57,17 @@ body {
   border-radius: 999px; padding: .4rem .9rem; font-size: .85rem; color: var(--muted);
 }
 .auth-wrap { max-width: 24rem; margin: 3rem auto; padding: 0 1.5rem 3rem; }
+.login-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+.login-shell { width: min(100%, 22rem); }
+.login-brand { justify-content: center; margin-bottom: 1.25rem; }
+.login-card h1 { margin: 0 0 .35rem; font-size: 1.35rem; }
+.login-lead { margin: 0 0 1rem; }
+.login-card .btn.primary:disabled { opacity: .65; cursor: wait; }
 .card {
   background: color-mix(in srgb, var(--surface) 90%, transparent);
   border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem;
